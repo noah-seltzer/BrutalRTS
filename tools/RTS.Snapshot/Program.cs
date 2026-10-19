@@ -271,10 +271,10 @@ public static class Scripts
         if (f >= 98 && f < 205) s.Keys.Add(Key.LeftShift);
         for (int i = 0; i < 3; i++)
         {
-            int at = 100 + i * 10;
-            if (f >= at && f < at + 8) { s.Mouse = moves[i]; if (f < at + 2) s.MouseDown[(int)MouseButton.Right] = true; }
-            int pl = 160 + i * 14;
-            if (f >= pl && f < pl + 12) { s.Mouse = depots[i]; if (f < pl + 2) s.MouseDown[(int)MouseButton.Left] = true; }
+            int move = 100 + i * 10;
+            if (f >= move && f < move + 8) { s.Mouse = moves[i]; if (f < move + 2) s.MouseDown[(int)MouseButton.Right] = true; }
+            int place = 160 + i * 14;
+            if (f >= place && f < place + 12) { s.Mouse = depots[i]; if (f < place + 2) s.MouseDown[(int)MouseButton.Left] = true; }
         }
         if (f is 150 or 151) s.Keys.Add(Key.D);
         if (f is 210 or 211) s.Keys.Add(Key.Escape);

@@ -366,6 +366,20 @@ public class SimTests
     }
 
     [Fact]
+    public void UnqueuedBuild_OverOwnQueuedPlacement_ReplacesQueue()
+    {
+        var w = NewWorld();
+        var worker = Units(w, 0, EntityKind.Worker)[0];
+        var spots = QueueDepots(w, worker, 2);
+        // a non-Shift build clears this worker's queue (refunding it), so its queued spot doesn't block it
+        Assert.True(w.CmdBuild(worker.Id, EntityKind.SupplyDepot, spots[1].x, spots[1].y));
+        Assert.Equal(400 - 100, w.Players[0].Credits);
+        Assert.Empty(w.QueueOf(worker));
+        var cur = w.CurrentOrderOf(worker);
+        Assert.Equal((spots[1].x, spots[1].y), (cur.BuildTx, cur.BuildTy));
+    }
+
+    [Fact]
     public void StoppingWorker_AfterFirstSiteStarts_RefundsOnlyUnstartedBuilds()
     {
         var w = NewWorld();

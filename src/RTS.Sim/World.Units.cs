@@ -22,9 +22,7 @@ public sealed partial class World
     private void ResetOrder(Entity e)
     {
         var x = e.X;
-        if (e.Order == UnitOrder.Build && x.BuildSiteId < 0 && x.BuildPaid)
-            Players[e.Owner].Credits += Defs.Get(x.BuildKind).Cost;
-        x.BuildPaid = false;
+        RefundUnplacedBuild(e);
         x.BuildSiteId = -1;
         e.Order = UnitOrder.Idle;
         e.TargetId = null;
@@ -325,9 +323,7 @@ public sealed partial class World
     {
         Emit(GameEvent.Explosion, t.Owner, t.Pos);
         if (!t.Def.IsStructure && t.Owner is 0 or 1) Emit(GameEvent.UnitLost, t.Owner, t.Pos);
-        if (t.Order == UnitOrder.Build && t.X.BuildSiteId < 0 && t.X.BuildPaid && t.Owner is 0 or 1)
-            Players[t.Owner].Credits += Defs.Get(t.X.BuildKind).Cost;
-        t.X.BuildPaid = false;
+        RefundUnplacedBuild(t);
         ClearQueue(t);
         ClearPath(t);
     }
@@ -501,31 +497,33 @@ public sealed partial class World
         return true;
     }
 
-    private bool OverlapsPendingSite(int owner, EntityKind k, int tx, int ty, int margin = 0)
+    /// <summary>ignoreQueueOf: a worker whose queued placements don't count (a non-Shift build clears them).</summary>
+    private bool OverlapsPendingSite(int owner, EntityKind k, int tx, int ty, int margin = 0, Entity? ignoreQueueOf = null)
     {
         int s = Defs.Get(k).FootprintTiles;
-        bool Overlaps(EntityKind ok, int ox, int oy)
+        bool Overlaps(EntityKind otherKind, int ox, int oy)
         {
-            int os = Defs.Get(ok).FootprintTiles;
-            return tx - margin < ox + os && ox < tx + s + margin && ty - margin < oy + os && oy < ty + s + margin;
+            int otherSize = Defs.Get(otherKind).FootprintTiles;
+            return tx - margin < ox + otherSize && ox < tx + s + margin && ty - margin < oy + otherSize && oy < ty + s + margin;
         }
         foreach (var u in _entities)
         {
             if (u.Owner != owner || !u.Alive) continue;
             if (u.Order == UnitOrder.Build && u.X.BuildSiteId < 0 && Overlaps(u.X.BuildKind, u.X.BuildTx, u.X.BuildTy)) return true;
+            if (u == ignoreQueueOf) continue;
             foreach (var q in u.X.Queue)
                 if (IsPlacement(q) && Overlaps(q.BuildKind, q.BuildTx, q.BuildTy)) return true;
         }
         return false;
     }
 
-    private bool CanPlaceImpl(int owner, EntityKind structure, int tileX, int tileY)
+    private bool CanPlaceImpl(int owner, EntityKind structure, int tileX, int tileY, Entity? ignoreQueueOf = null)
     {
         var d = Defs.Get(structure);
         if (!d.IsStructure || structure == EntityKind.CrystalField || owner is not (0 or 1)) return false;
         if (!FootprintClear(structure, tileX, tileY)) return false;
         if (!MeetsRequirement(owner, structure)) return false;
-        if (OverlapsPendingSite(owner, structure, tileX, tileY)) return false;
+        if (OverlapsPendingSite(owner, structure, tileX, tileY, ignoreQueueOf: ignoreQueueOf)) return false;
         if (owner == 0 || !_ais.Any(a => a.Me == owner))
         {
             int s = d.FootprintTiles;
@@ -544,7 +542,7 @@ public sealed partial class World
     {
         var w = FindEntity(workerId);
         if (w == null || !w.Alive || w.Owner is not (0 or 1) || !w.Def.Builds.Contains(structure)) return false;
-        if (!CanPlaceImpl(w.Owner, structure, tileX, tileY)) return false;
+        if (!CanPlaceImpl(w.Owner, structure, tileX, tileY, ignoreQueueOf: queue ? null : w)) return false;
         var p = Players[w.Owner];
         int cost = Defs.Get(structure).Cost;
         if (p.Credits < cost) { Emit(GameEvent.InsufficientCredits, w.Owner, w.Pos); return false; }

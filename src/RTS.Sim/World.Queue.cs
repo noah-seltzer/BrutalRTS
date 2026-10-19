@@ -42,8 +42,20 @@ public sealed partial class World
     private void ClearQueue(Entity e)
     {
         foreach (var o in e.X.Queue)
-            if (IsPlacement(o) && e.Owner is 0 or 1) Players[e.Owner].Credits += Defs.Get(o.BuildKind).Cost;
+            if (IsPlacement(o)) Refund(e.Owner, o.BuildKind);
         e.X.Queue.Clear();
+    }
+
+    /// <summary>Refunds the current build if it was paid for but never became a construction site.</summary>
+    private void RefundUnplacedBuild(Entity e)
+    {
+        if (e.Order == UnitOrder.Build && e.X.BuildSiteId < 0 && e.X.BuildPaid) Refund(e.Owner, e.X.BuildKind);
+        e.X.BuildPaid = false;
+    }
+
+    private void Refund(int owner, EntityKind k)
+    {
+        if (owner is 0 or 1) Players[owner].Credits += Defs.Get(k).Cost;
     }
 
     /// <summary>Starts queued orders in turn, skipping any whose target is gone.</summary>
