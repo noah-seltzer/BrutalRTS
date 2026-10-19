@@ -273,6 +273,228 @@ public class SimTests
     }
 
     [Fact]
+    public void QueuedMoves_VisitPointsInOrder_ThenIdle()
+    {
+        var w = NewWorld();
+        ClearRect(w, 30, 30, 50, 50);
+        var u = w.SpawnUnit(EntityKind.Soldier, 0, World.TileCenter(32, 32));
+        var pts = new[] { World.TileCenter(46, 32), World.TileCenter(46, 46), World.TileCenter(32, 46) };
+        foreach (var p in pts) w.CmdMove(new[] { u.Id }, p, attackMove: false, queue: true);
+        Assert.Equal(UnitOrder.Move, u.Order);
+        Assert.Equal(2, w.QueueOf(u).Count);
+
+        var visited = new List<int>();
+        for (int i = 0; i < (int)(40 / Dt); i++)
+        {
+            w.Step(Dt);
+            for (int k = 0; k < pts.Length; k++)
+                if (Vec2.Distance(u.Pos, pts[k]) < 12f && (visited.Count == 0 || visited[^1] != k)) visited.Add(k);
+        }
+        Assert.Equal(new[] { 0, 1, 2 }, visited);
+        Assert.Equal(UnitOrder.Idle, u.Order);
+        Assert.Empty(w.QueueOf(u));
+    }
+
+    [Theory]
+    [InlineData("move")]
+    [InlineData("stop")]
+    [InlineData("hold")]
+    public void UnqueuedOrderStopAndHold_ClearQueue(string cmd)
+    {
+        var w = NewWorld();
+        ClearRect(w, 30, 30, 50, 50);
+        var u = w.SpawnUnit(EntityKind.Soldier, 0, World.TileCenter(32, 32));
+        var ids = new[] { u.Id };
+        w.CmdMove(ids, World.TileCenter(46, 32), attackMove: false, queue: true);
+        w.CmdMove(ids, World.TileCenter(46, 46), attackMove: false, queue: true);
+        w.CmdMove(ids, World.TileCenter(32, 46), attackMove: true, queue: true);
+        Assert.Equal(2, w.QueueOf(u).Count);
+
+        var dest = World.TileCenter(36, 36);
+        if (cmd == "move") w.CmdMove(ids, dest);
+        else if (cmd == "stop") w.CmdStop(ids);
+        else w.CmdHold(ids);
+        Assert.Empty(w.QueueOf(u));
+        Run(w, 10);
+        if (cmd == "move") Assert.True(Vec2.Distance(u.Pos, dest) < 12f);
+        Assert.Equal(cmd == "hold" ? UnitOrder.Hold : UnitOrder.Idle, u.Order);
+        Assert.Empty(w.QueueOf(u));
+    }
+
+    /// <summary>Shift-queues `count` supply depots on one worker at the first free spots near the base.</summary>
+    private static List<(int x, int y)> QueueDepots(World w, Entity worker, int count)
+    {
+        var spots = new List<(int x, int y)>();
+        var tiles = Enumerable.Range(5, 25).SelectMany(x => Enumerable.Range(5, 25).Select(y => (x, y)));
+        for (int i = 0; i < count; i++)
+        {
+            var spot = tiles.First(t => w.CanPlace(0, EntityKind.SupplyDepot, t.x, t.y));
+            Assert.True(w.CmdBuild(worker.Id, EntityKind.SupplyDepot, spot.x, spot.y, queue: true));
+            spots.Add(spot);
+        }
+        return spots;
+    }
+
+    private static Entity NearestField(World w, Entity hq) =>
+        w.Entities.Where(e => e.Kind == EntityKind.CrystalField).OrderBy(e => Vec2.Distance(e.Pos, hq.Pos)).First();
+
+    private static List<Entity> Depots(World w) => Units(w, 0, EntityKind.SupplyDepot).OrderBy(e => e.Id).ToList();
+
+    [Fact]
+    public void QueuedBuilds_PaidWhenQueued_BuiltInOrderByOneWorker()
+    {
+        var w = NewWorld();
+        var worker = Units(w, 0, EntityKind.Worker)[0];
+        var spots = QueueDepots(w, worker, 3);
+        Assert.Equal(400 - 300, w.Players[0].Credits);
+        Assert.Equal(UnitOrder.Build, worker.Order);
+        Assert.Equal(2, w.QueueOf(worker).Count);
+        // queued (not yet started) placements block overlapping placements
+        Assert.False(w.CanPlace(0, EntityKind.SupplyDepot, spots[2].x, spots[2].y));
+        // read-only view of current + queued orders for the client
+        var cur = w.CurrentOrderOf(worker);
+        Assert.Equal((UnitOrder.Build, EntityKind.SupplyDepot, spots[0].x, spots[0].y, (int?)null), (cur.Order, cur.BuildKind, cur.BuildTx, cur.BuildTy, cur.TargetId));
+        Assert.Equal(spots.Skip(1).ToList(), w.QueueOf(worker).Select(o => (o.BuildTx, o.BuildTy)).ToList());
+        Assert.All(w.QueueOf(worker), o => Assert.Equal(World.FootprintCenter(EntityKind.SupplyDepot, o.BuildTx, o.BuildTy), o.Target));
+
+        Run(w, 100);
+        var depots = Depots(w);
+        Assert.Equal(spots, depots.Select(World.StructureOrigin).ToList()); // spawned in queue order
+        Assert.All(depots, d => Assert.False(d.UnderConstruction));
+        Assert.Equal(UnitOrder.Idle, worker.Order);
+        Assert.Equal(100, w.Players[0].Credits);
+    }
+
+    [Fact]
+    public void StoppingWorker_AfterFirstSiteStarts_RefundsOnlyUnstartedBuilds()
+    {
+        var w = NewWorld();
+        var worker = Units(w, 0, EntityKind.Worker)[0];
+        QueueDepots(w, worker, 3);
+        for (int i = 0; i < (int)(30 / Dt) && Depots(w).Count == 0; i++) w.Step(Dt);
+        Assert.Single(Depots(w));
+        Assert.Equal(100, w.Players[0].Credits);
+
+        w.CmdStop(new[] { worker.Id });
+        Assert.Equal(100 + 200, w.Players[0].Credits);
+        Assert.Empty(w.QueueOf(worker));
+        Run(w, 30);
+        Assert.Single(Depots(w));
+    }
+
+    [Fact]
+    public void WorkerKilled_WithQueuedBuilds_RefundsThem()
+    {
+        var w = NewWorld();
+        var worker = Units(w, 0, EntityKind.Worker)[0];
+        QueueDepots(w, worker, 3);
+        Assert.Equal(100, w.Players[0].Credits);
+        w.DealDamage(worker, 1000, null);
+        Assert.Equal(400, w.Players[0].Credits);
+        Run(w, 30);
+        Assert.Empty(Depots(w));
+        Assert.Equal(400, w.Players[0].Credits);
+    }
+
+    [Fact]
+    public void QueuedBuild_BlockedOnArrival_IsRefunded_AndQueueContinues()
+    {
+        var w = NewWorld();
+        var worker = Units(w, 0, EntityKind.Worker)[0];
+        var spots = QueueDepots(w, worker, 3);
+        w.SetTerrain(spots[1].x, spots[1].y, Terrain.Rock); // second site becomes unbuildable
+        Run(w, 100);
+        Assert.Equal(new[] { spots[0], spots[2] }, Depots(w).Select(World.StructureOrigin).ToArray());
+        Assert.Equal(400 - 200, w.Players[0].Credits);
+        Assert.Equal(UnitOrder.Idle, worker.Order);
+    }
+
+    [Fact]
+    public void QueuedAttack_OnTargetThatDied_IsSkipped()
+    {
+        var w = NewWorld();
+        ClearRect(w, 30, 30, 50, 50);
+        var u = w.SpawnUnit(EntityKind.Soldier, 0, World.TileCenter(32, 32));
+        var victim = w.SpawnUnit(EntityKind.Worker, 1, World.TileCenter(48, 48));
+        var a = World.TileCenter(40, 32);
+        var b = World.TileCenter(32, 40);
+        var ids = new[] { u.Id };
+        w.CmdMove(ids, a, attackMove: false, queue: true);
+        w.CmdAttack(ids, victim.Id, queue: true);
+        w.CmdMove(ids, b, attackMove: false, queue: true);
+        Assert.Equal(2, w.QueueOf(u).Count);
+        w.DealDamage(victim, 1000, null);
+
+        bool everAttacked = false;
+        for (int i = 0; i < (int)(20 / Dt); i++) { w.Step(Dt); everAttacked |= u.Order == UnitOrder.Attack; }
+        Assert.False(everAttacked);
+        Assert.True(Vec2.Distance(u.Pos, b) < 12f);
+        Assert.Equal(UnitOrder.Idle, u.Order);
+    }
+
+    [Fact]
+    public void QueuedSmart_ResolvesLikeUnqueued_ButAppends()
+    {
+        var w = NewWorld();
+        var worker = Units(w, 0, EntityKind.Worker)[0];
+        var hq = Units(w, 0, EntityKind.HQ)[0];
+        var field = NearestField(w, hq);
+        var a = hq.Pos + new Vec2(120, 90);
+        var ids = new[] { worker.Id };
+        w.CmdSmart(ids, a, null, queue: true);
+        w.CmdSmart(ids, field.Pos, field.Id, queue: true);
+        Assert.Equal(UnitOrder.Move, worker.Order);
+        Assert.Equal(new[] { UnitOrder.Harvest }, w.QueueOf(worker).Select(o => o.Order).ToArray());
+        Assert.Equal(field.Id, w.QueueOf(worker)[0].TargetId);
+
+        bool reachedA = false;
+        for (int i = 0; i < (int)(30 / Dt); i++) { w.Step(Dt); reachedA |= Vec2.Distance(worker.Pos, a) < 12f; }
+        Assert.True(reachedA);
+        Assert.True(w.Players[0].Credits > 400, $"credits {w.Players[0].Credits}");
+        Assert.True(worker.Order is UnitOrder.Harvest or UnitOrder.ReturnCargo);
+    }
+
+    [Fact]
+    public void HarvestingWorker_RunsQueuedOrderAfterDroppingOffCargo()
+    {
+        var w = NewWorld();
+        var worker = Units(w, 0, EntityKind.Worker)[0];
+        var hq = Units(w, 0, EntityKind.HQ)[0];
+        var field = NearestField(w, hq);
+        var ids = new[] { worker.Id };
+        w.CmdHarvest(ids, field.Id);
+        for (int i = 0; i < (int)(30 / Dt) && worker.Cargo == 0; i++) w.Step(Dt);
+        Assert.True(worker.Cargo > 0);
+
+        var a = hq.Pos + new Vec2(120, 90);
+        w.CmdMove(ids, a, attackMove: false, queue: true);
+        Run(w, 25);
+        Assert.Equal(400 + Defs.HarvestPerTrip, w.Players[0].Credits); // delivered the load first
+        Assert.True(Vec2.Distance(worker.Pos, a) < 12f);
+        Assert.Equal(UnitOrder.Idle, worker.Order);
+    }
+
+    [Fact]
+    public void QueuedHarvest_OnDepletedField_IsSkipped()
+    {
+        var w = NewWorld();
+        var worker = Units(w, 0, EntityKind.Worker)[0];
+        var hq = Units(w, 0, EntityKind.HQ)[0];
+        var field = NearestField(w, hq);
+        var a = hq.Pos + new Vec2(120, 90);
+        var b = hq.Pos + new Vec2(60, 120);
+        var ids = new[] { worker.Id };
+        w.CmdMove(ids, a, attackMove: false, queue: true);
+        w.CmdHarvest(ids, field.Id, queue: true);
+        w.CmdMove(ids, b, attackMove: false, queue: true);
+        field.Resources = 0; field.Hp = 0;
+        bool harvested = false;
+        for (int i = 0; i < (int)(25 / Dt); i++) { w.Step(Dt); harvested |= worker.Order == UnitOrder.Harvest; }
+        Assert.False(harvested);
+        Assert.True(Vec2.Distance(worker.Pos, b) < 12f);
+    }
+
+    [Fact]
     public void Simulation_IsDeterministic()
     {
         string Snap(World w) => string.Join(";", w.Entities.Select(e => $"{e.Id}:{e.Pos.X:F2},{e.Pos.Y:F2}:{e.Hp}")) + $"|{w.Players[1].Credits}";
@@ -280,6 +502,29 @@ public class SimTests
         var b = World.CreateSkirmish(3, Difficulty.Normal);
         Run(a, 120); Run(b, 120);
         Assert.Equal(Snap(a), Snap(b));
+    }
+
+    [Fact]
+    public void Simulation_WithQueuedCommands_IsDeterministic()
+    {
+        string Snap(World w) => string.Join(";", w.Entities.Select(e => $"{e.Id}:{e.Pos.X:F2},{e.Pos.Y:F2}:{e.Hp}:{e.Order}"))
+            + $"|{w.Players[0].Credits}|{w.Players[1].Credits}";
+        World Play()
+        {
+            var w = World.CreateSkirmish(3, Difficulty.Normal);
+            var workers = Units(w, 0, EntityKind.Worker);
+            var hq = Units(w, 0, EntityKind.HQ)[0];
+            var field = NearestField(w, hq);
+            QueueDepots(w, workers[0], 2);
+            w.CmdSmart(new[] { workers[0].Id }, field.Pos, field.Id, queue: true);
+            var rest = workers.Skip(1).Select(u => u.Id).ToList();
+            w.CmdMove(rest, hq.Pos + new Vec2(150, 60), attackMove: false, queue: true);
+            w.CmdMove(rest, hq.Pos + new Vec2(60, 150), attackMove: true, queue: true);
+            w.CmdHarvest(rest, field.Id, queue: true);
+            Run(w, 120);
+            return w;
+        }
+        Assert.Equal(Snap(Play()), Snap(Play()));
     }
 
     [Fact]

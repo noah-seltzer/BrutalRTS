@@ -6,7 +6,14 @@ namespace RTS.Client;
 /// <summary>Mouse/keyboard -> selection and World commands.</summary>
 public sealed partial class GameSession
 {
-    public EntityKind? Placing;
+    /// <summary>Structure being placed. Setting it to null ends the placement session.</summary>
+    public EntityKind? Placing
+    {
+        get => _placing;
+        set { _placing = value; if (value == null) _placingWorkerId = null; }
+    }
+    EntityKind? _placing;
+    int? _placingWorkerId; // worker that receives Shift-queued placements this session
     public bool AttackMovePending;
     public bool Dragging;
     public Vec2 DragStart;
@@ -46,14 +53,14 @@ public sealed partial class GameSession
             else if (inMini)
             {
                 var wp = Minimap.ToWorld(L.Minimap, m, World);
-                if (AttackMovePending) { AttackMove(wp); if (!input.Shift) AttackMovePending = false; }
+                if (AttackMovePending) { AttackMove(wp, input.Shift); if (!input.Shift) AttackMovePending = false; }
                 else if (Placing == null) { Camera.CenterOn(wp); _miniDragging = true; }
             }
             else if (L.InfoArea.Contains(m)) HandleInfoClick(m, input.Shift);
             else if (inPlay)
             {
                 if (Placing is EntityKind k) TryPlace(k, input.Shift);
-                else if (AttackMovePending) { AttackMove(MouseWorld); if (!input.Shift) AttackMovePending = false; }
+                else if (AttackMovePending) { AttackMove(MouseWorld, input.Shift); if (!input.Shift) AttackMovePending = false; }
                 else { Dragging = true; DragStart = m; }
             }
         }
@@ -63,8 +70,8 @@ public sealed partial class GameSession
         {
             if (Placing != null) Placing = null;
             else if (AttackMovePending) AttackMovePending = false;
-            else if (inMini) SmartCommand(Minimap.ToWorld(L.Minimap, m, World), pick: false);
-            else if (inPlay) SmartCommand(MouseWorld, pick: true);
+            else if (inMini) SmartCommand(Minimap.ToWorld(L.Minimap, m, World), pick: false, input.Shift);
+            else if (inPlay) SmartCommand(MouseWorld, pick: true, input.Shift);
         }
     }
 
@@ -147,7 +154,8 @@ public sealed partial class GameSession
 
     List<int> OwnUnitIds() => Selection.Own(World, Me).Where(e => !e.Def.IsStructure).Select(e => e.Id).ToList();
 
-    void SmartCommand(Vec2 wp, bool pick)
+    /// <summary>Right-click. With queue (Shift) unit orders are appended; rally points are always replaced.</summary>
+    void SmartCommand(Vec2 wp, bool pick, bool queue)
     {
         var own = Selection.Own(World, Me);
         var units = own.Where(e => !e.Def.IsStructure).Select(e => e.Id).ToList();
@@ -165,7 +173,7 @@ public sealed partial class GameSession
                     else if (t.Kind == EntityKind.CrystalField) col = Pal.Neutral;
                 }
             }
-            World.CmdSmart(units, wp, tid);
+            World.CmdSmart(units, wp, tid, queue);
             Effects.Marker(wp, col);
             return;
         }
@@ -177,11 +185,11 @@ public sealed partial class GameSession
         }
     }
 
-    void AttackMove(Vec2 wp)
+    void AttackMove(Vec2 wp, bool queue)
     {
         var ids = OwnUnitIds();
         if (ids.Count == 0) return;
-        World.CmdMove(ids, wp, attackMove: true);
+        World.CmdMove(ids, wp, attackMove: true, queue);
         Effects.Marker(wp, Pal.AttackMarker);
     }
 
@@ -204,10 +212,13 @@ public sealed partial class GameSession
             return;
         }
         var center = World.FootprintCenter(kind, tx, ty);
-        var worker = workers.OrderBy(w => w.Order == UnitOrder.Build ? 1 : 0).ThenBy(w => Vec2.DistanceSq(w.Pos, center)).First();
-        if (World.CmdBuild(worker.Id, kind, tx, ty))
+        // Shift placements in one session all queue onto the worker that took the first one.
+        var worker = (shift ? workers.FirstOrDefault(w => w.Id == _placingWorkerId) : null)
+                     ?? workers.OrderBy(w => w.Order == UnitOrder.Build ? 1 : 0).ThenBy(w => Vec2.DistanceSq(w.Pos, center)).First();
+        if (World.CmdBuild(worker.Id, kind, tx, ty, queue: shift))
         {
             Effects.Marker(center, Pal.MoveMarker);
+            _placingWorkerId = worker.Id;
             if (!shift) Placing = null;
         }
     }

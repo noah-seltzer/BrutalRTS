@@ -14,6 +14,7 @@ public static class WorldRenderer
         DrawEntities(r, s);
         s.Effects.Draw(r, s.Camera);
         DrawRallies(r, s);
+        DrawOrderQueues(r, s);
         DrawPlacementGhost(r, s);
         DrawDragBox(r, s);
     }
@@ -168,18 +169,63 @@ public static class WorldRenderer
         }
     }
 
-    static void DrawPlacementGhost(IRenderer2D r, GameSession s)
+    /// <summary>How one segment of a unit's order chain is drawn, by the order the segment leads to.
+    /// Per-order-type looks (dashed attack-move, dotted build, ...) belong in LineStyleFor.</summary>
+    readonly record struct OrderLineStyle(Color Color, float Width);
+
+    static readonly Color GhostOk = new(60, 220, 90);
+
+    static OrderLineStyle LineStyleFor(UnitOrder o) => o switch
     {
-        if (s.Placing is not EntityKind k) return;
-        if (!s.Layout.PlayArea.Contains(s.MouseScreen)) return;
-        var def = World.DefOf(k);
-        int n = Math.Max(1, def.FootprintTiles);
-        var (tx, ty) = s.PlacementTile(k);
-        bool ok = s.World.CanPlace(GameSession.Me, k, tx, ty);
+        UnitOrder.AttackMove or UnitOrder.Attack => new(Pal.AttackMarker, 1.5f),
+        UnitOrder.Harvest => new(Pal.Neutral, 1.5f),
+        _ => new(Pal.MoveMarker, 1.5f), // move, build (same as their click markers)
+    };
+
+    /// <summary>World point an order heads for, or null if it has none (or its target is gone).</summary>
+    static Vec2? OrderPoint(World w, QueuedOrder o)
+    {
+        if (o.Order is UnitOrder.Idle or UnitOrder.Hold) return null;
+        if (o.Target is Vec2 p) return p; // e.g. an attack-move heads for its destination even while fighting
+        return o.TargetId is int id && w.Get(id) is { Alive: true } t ? t.Pos : null;
+    }
+
+    /// <summary>Selected own units: line chain through the current and queued order targets, and
+    /// ghost footprints for builds not yet placed.</summary>
+    static void DrawOrderQueues(IRenderer2D r, GameSession s)
+    {
+        var w = s.World; var cam = s.Camera;
+        foreach (var e in s.Selection.Entities(w))
+        {
+            if (e.Owner != GameSession.Me || e.Def.IsStructure) continue;
+            var cur = w.CurrentOrderOf(e);
+            var queue = w.QueueOf(e);
+            if (World.IsPlacement(cur)) DrawFootprintGhost(r, s, cur.BuildKind, cur.BuildTx, cur.BuildTy, GhostOk.WithAlpha(150), 25);
+            foreach (var o in queue)
+                if (World.IsPlacement(o)) DrawFootprintGhost(r, s, o.BuildKind, o.BuildTx, o.BuildTy, GhostOk.WithAlpha(150), 25);
+            if (queue.Count == 0) continue;
+
+            var from = cam.WorldToScreen(e.Pos);
+            void Segment(QueuedOrder o)
+            {
+                if (OrderPoint(w, o) is not Vec2 p) return;
+                var to = cam.WorldToScreen(p);
+                var st = LineStyleFor(o.Order);
+                r.DrawLine(from, to, st.Color.WithAlpha(170), st.Width);
+                r.FillCircle(to, 3f, st.Color);
+                from = to;
+            }
+            if (cur.Order != UnitOrder.ReturnCargo) Segment(cur); // a return trip's TargetId is the field, not where it heads
+            foreach (var o in queue) Segment(o);
+        }
+    }
+
+    static void DrawFootprintGhost(IRenderer2D r, GameSession s, EntityKind k, int tx, int ty, Color col, byte fillAlpha)
+    {
+        int n = Math.Max(1, World.DefOf(k).FootprintTiles);
         var p = s.Camera.WorldToScreen(new Vec2(tx * TS, ty * TS));
         float sz = n * TS * s.Camera.Zoom, ts = TS * s.Camera.Zoom;
-        var col = ok ? new Color(60, 220, 90) : new Color(230, 60, 50);
-        r.FillRect(p.X, p.Y, sz, sz, col.WithAlpha(70));
+        r.FillRect(p.X, p.Y, sz, sz, col.WithAlpha(fillAlpha));
         for (int i = 1; i < n; i++)
         {
             r.DrawLine(new Vec2(p.X + i * ts, p.Y), new Vec2(p.X + i * ts, p.Y + sz), col.WithAlpha(90), 1f);
@@ -187,6 +233,15 @@ public static class WorldRenderer
         }
         r.DrawRect(p.X, p.Y, sz, sz, col, 2f);
         Shapes.StructureGlyph(r, k, new RectF(p.X, p.Y, sz, sz), col.WithAlpha(180), new Vec2(1, 0));
+    }
+
+    static void DrawPlacementGhost(IRenderer2D r, GameSession s)
+    {
+        if (s.Placing is not EntityKind k) return;
+        if (!s.Layout.PlayArea.Contains(s.MouseScreen)) return;
+        var (tx, ty) = s.PlacementTile(k);
+        bool ok = s.World.CanPlace(GameSession.Me, k, tx, ty);
+        DrawFootprintGhost(r, s, k, tx, ty, ok ? GhostOk : new Color(230, 60, 50), 70);
     }
 
     static void DrawDragBox(IRenderer2D r, GameSession s)
