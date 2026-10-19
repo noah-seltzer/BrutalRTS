@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Build without the real game client: dotnet build -p:NoClient=true (auto-enabled if RTS.Client doesn't exist). -->
+    <ClientProject>..\..\src\RTS.Client\RTS.Client.csproj</ClientProject>
+    <NoClient Condition="'$(NoClient)' == '' and !Exists('$(ClientProject)')">true</NoClient>
+    <DefineConstants Condition="'$(NoClient)' != 'true'">$(DefineConstants);HAS_CLIENT</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RTS.SoftRender\RTS.SoftRender.csproj" />
+    <ProjectReference Include="..\..\src\RTS.Core\RTS.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NoClient)' != 'true'">
+    <ProjectReference Include="$(ClientProject)" />
+  </ItemGroup>
+</Project>

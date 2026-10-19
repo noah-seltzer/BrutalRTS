@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    RTS.Game = platform layer (BRUTAL-specific): GLFW window, OpenGL 4.1 context,
+    Dear ImGui draw-list based IRenderer2D, input mapping, main loop, BRUTAL splash.
+
+    Build switch: the RTS.Client project reference is included only when
+      (a) ../RTS.Client/RTS.Client.csproj exists, and
+      (b) the MSBuild property NoClient is not 'true'.
+    Otherwise NO_CLIENT is defined and Program.cs always runs the built-in DemoApp.
+      dotnet build src/RTS.Game -p:NoClient=true      (verify the platform layer alone)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>RTS.Game</RootNamespace>
+    <AssemblyName>RTS.Game</AssemblyName>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(NoClient)' == 'true' or !Exists('..\RTS.Client\RTS.Client.csproj')">
+    <DefineConstants>$(DefineConstants);NO_CLIENT</DefineConstants>
+    <_UseClient>false</_UseClient>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RTS.Core\RTS.Core.csproj" />
+    <ProjectReference Include="..\RTS.Client\RTS.Client.csproj" Condition="'$(_UseClient)' != 'false'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Ahwoo.Brutal.Core" Version="2026.10.1" />
+    <PackageReference Include="Ahwoo.Brutal.Glfw" Version="2026.10.4" />
+    <PackageReference Include="Ahwoo.Brutal.OpenGl" Version="2026.10.1" />
+    <PackageReference Include="Ahwoo.Brutal.ImGui" Version="2026.10.2" />
+    <PackageReference Include="Ahwoo.Brutal.ImGui.Backends" Version="2026.10.2" />
+  </ItemGroup>
+
+  <!-- BRUTAL License v1.0 clause 2.3: NOTICE.txt must ship alongside the product. -->
+  <ItemGroup>
+    <None Include="NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="LICENSES\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

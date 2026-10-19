@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RTS.Core/RTS.Core.csproj" />
+    <Project Path="src/RTS.Sim/RTS.Sim.csproj" />
+    <Project Path="src/RTS.Client/RTS.Client.csproj" />
+    <Project Path="src/RTS.Game/RTS.Game.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RTS.Sim.Tests/RTS.Sim.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/RTS.SoftRender/RTS.SoftRender.csproj" />
+    <Project Path="tools/RTS.Snapshot/RTS.Snapshot.csproj" />
+  </Folder>
+</Solution>
