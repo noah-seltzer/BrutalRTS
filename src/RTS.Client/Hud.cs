@@ -9,7 +9,8 @@ public static class Hud
     {
         "Left-click / drag: select (Shift add/toggle, double-click or Ctrl-click: all of type on screen)",
         "Right-click: smart command (move / attack / harvest / help build / set rally)",
-        "A + left-click: attack-move     S: stop     H: hold position",
+        "A + left-click: attack-move     S: stop     H: hold position (stop/hold clear queued orders)",
+        "Shift + order (right-click, attack-move, build placement): queue it after the current orders",
         "Worker build: B Barracks, D Supply Depot, F Factory, T Turret, Q HQ",
         "Train: W Worker, E Soldier, R Ranger, T Tank     X: cancel last queued",
         "Ctrl+0-9: assign group   0-9: recall (double-tap: center camera)",
@@ -92,7 +93,7 @@ public static class Hud
     static void DrawCursorHint(IRenderer2D r, GameSession s)
     {
         string? hint = s.AttackMovePending ? "Attack-move: left-click target (right-click cancels)"
-            : s.Placing is EntityKind k ? $"Place {World.DefOf(k).Name} (Shift: keep placing, right-click/Esc cancels)" : null;
+            : s.Placing is EntityKind k ? $"Place {World.DefOf(k).Name} (Shift: queue more on one worker, right-click/Esc cancels)" : null;
         if (hint == null) return;
         var m = s.MouseScreen;
         Ui.TextShadow(r, m.X + 16, m.Y + 14, hint, s.AttackMovePending ? Pal.AttackMarker : Pal.Gold, 13);
@@ -118,7 +119,10 @@ public static class Hud
         }
         if (ents.Count == 1) { DrawSingle(r, s, ents[0], a); return; }
 
-        r.DrawText(a.X + 6, a.Y + 3, $"{ents.Count} selected", Pal.Text, 15);
+        var header = $"{ents.Count} selected";
+        r.DrawText(a.X + 6, a.Y + 3, header, Pal.Text, 15);
+        int queued = ents.Count(e => e.Owner == GameSession.Me && s.World.QueueOf(e).Count > 0);
+        if (queued > 0) r.DrawText(a.X + 6 + r.MeasureText(header, 15).X + 12, a.Y + 5, $"{queued} with queued orders", Pal.TextDim, 13);
         for (int i = 0; i < ents.Count; i++)
         {
             if (!InfoCell(L, i, out var rc))
@@ -169,6 +173,13 @@ public static class Hud
         for (int i = 0; i < Math.Min(3, e.Rank); i++) Shapes.Chevron(r, new Vec2(icon.X + 8 + i * 10, icon.Bottom + 10), 4, Pal.Gold);
         y += 22;
 
+        if (!e.Def.IsStructure && e.Owner == GameSession.Me && s.World.QueueOf(e).Count > 0)
+        {
+            var orders = new[] { s.World.CurrentOrderOf(e) }.Concat(s.World.QueueOf(e)).Select(OrderLabel);
+            DrawWrapped(r, x, y, "Orders: " + string.Join(" > ", orders), Pal.Text, 14, maxW, a.Bottom - 4);
+            return;
+        }
+
         if (e.UnderConstruction)
         {
             Ui.TextFit(r, x, y, $"Under construction {e.BuildProgress * 100:0}%", Pal.Gold, 14, maxW);
@@ -197,6 +208,33 @@ public static class Hud
         {
             Ui.TextFit(r, x, y, "Right-click: set rally point", Pal.TextDim, 13, maxW);
         }
+    }
+
+    static string OrderLabel(QueuedOrder o) => o.Order switch
+    {
+        UnitOrder.Build => $"Build {World.DefOf(o.BuildKind).Name}",
+        UnitOrder.AttackMove => "Attack-move",
+        UnitOrder.ReturnCargo => "Return cargo",
+        _ => o.Order.ToString(),
+    };
+
+    /// <summary>Word-wraps text into lines of maxW, stopping before bottom.</summary>
+    static void DrawWrapped(IRenderer2D r, float x, float y, string text, Color c, float size, float maxW, float bottom)
+    {
+        var line = "";
+        foreach (var word in text.Split(' '))
+        {
+            var next = line.Length == 0 ? word : line + " " + word;
+            if (line.Length > 0 && r.MeasureText(next, size).X > maxW)
+            {
+                if (y + size * 2 + 4 > bottom) { Ui.TextFit(r, x, y, line + " ...", c, size, maxW); return; }
+                r.DrawText(x, y, line, c, size);
+                y += size + 4;
+                line = word;
+            }
+            else line = next;
+        }
+        if (line.Length > 0) Ui.TextFit(r, x, y, line, c, size, maxW);
     }
 
     static void DrawCard(IRenderer2D r, GameSession s)

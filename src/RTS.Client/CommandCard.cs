@@ -95,7 +95,7 @@ public sealed partial class GameSession
             Card.Add(new CardButton
             {
                 Slot = 11, Label = "Cancel", Title = $"Cancel placing {World.DefOf(pk).Name}",
-                Detail = "Left-click: place (Shift: keep placing). Right-click/Esc: cancel",
+                Detail = "Left-click: place (Shift: queue more on the same worker). Right-click/Esc: cancel",
                 KeyLabel = "Esc", OnClick = () => Placing = null,
             });
             return;
@@ -110,17 +110,17 @@ public sealed partial class GameSession
             used.UnionWith(new[] { Key.A, Key.S, Key.H });
             Card.Add(new CardButton
             {
-                Slot = 0, Label = "Attack", Title = "Attack-move", Detail = "Then left-click a destination. Units engage enemies on the way.",
+                Slot = 0, Label = "Attack", Title = "Attack-move", Detail = "Then left-click a destination. Units engage enemies on the way.\nShift-click: queue it and stay armed for more.",
                 Hotkey = Key.A, OnClick = () => { AttackMovePending = true; Placing = null; },
             });
             Card.Add(new CardButton
             {
-                Slot = 1, Label = "Stop", Title = "Stop", Detail = "Cancel current orders.", Hotkey = Key.S,
+                Slot = 1, Label = "Stop", Title = "Stop", Detail = "Cancel current and queued orders.", Hotkey = Key.S,
                 OnClick = () => World.CmdStop(OwnUnitIds()),
             });
             Card.Add(new CardButton
             {
-                Slot = 2, Label = "Hold", Title = "Hold position", Detail = "Stay put and fire at enemies in range.", Hotkey = Key.H,
+                Slot = 2, Label = "Hold", Title = "Hold position", Detail = "Stay put and fire at enemies in range. Clears queued orders.", Hotkey = Key.H,
                 OnClick = () => World.CmdHold(OwnUnitIds()),
             });
 
@@ -129,7 +129,7 @@ public sealed partial class GameSession
             {
                 var k = builds[i];
                 var b = CostButton(4 + i, k, used, "Build")!;
-                b.Detail += "\nPlace with left-click, Shift to place several.";
+                b.Detail += "\nPlace with left-click. Shift: queue several on one worker (paid when queued).";
                 b.OnClick = () => { Placing = k; AttackMovePending = false; };
                 Card.Add(b);
             }

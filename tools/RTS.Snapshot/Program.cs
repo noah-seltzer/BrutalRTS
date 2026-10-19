@@ -14,7 +14,7 @@ public static class Program
     private const string Usage = """
         RTS.Snapshot - headless frame capture
           --app client|demo     IGameApp to drive (default: client if built with it, else demo)
-          --script NAME         menu | start | demo   (default: menu)
+          --script NAME         menu | start | demo | queue   (default: menu)
           --frames N            frames to simulate at dt=1/60 (default: 300)
           --out DIR             output directory (default: ./snapshots)
           --every K             capture every K frames (default: N/5); last frame always captured
@@ -202,6 +202,7 @@ public static class Scripts
         ["menu"] = static (_, _, _, _) => { },
         ["start"] = Start,
         ["demo"] = Demo,
+        ["queue"] = Queue,
     };
 
     public static IEnumerable<string> Names => All.Keys;
@@ -249,5 +250,33 @@ public static class Scripts
         if (f >= 170 && f < 200) s.Keys.Add(Key.Up);
         if (f is 220 or 230) s.Scroll = 1f;
         if (f is 245) s.Scroll = -1f;
+    }
+
+    /// <summary>
+    /// start, box-select one worker (default 1280x720 layout), then with Shift held: three right-clicks (f100-130), D + three depot
+    /// placements on one worker (f150-200), Esc ends placement; idles so queued waypoints/ghosts can be seen.
+    /// </summary>
+    private static void Queue(int f, int w, int h, ScriptFrame s)
+    {
+        Start(f, w, h, s);
+        var c = new Vec2(w / 2f, h / 2f);
+        var boxA = c + new Vec2(-165, -108);
+        var boxB = c + new Vec2(-125, -70);
+        if (f >= 50 && f < 60) s.Mouse = boxA;
+        else if (f >= 60 && f <= 80) { s.Mouse = boxA + (boxB - boxA) * ((f - 60) / 20f); s.MouseDown[(int)MouseButton.Left] = true; }
+        else if (f > 80) s.Mouse = c;
+
+        Vec2[] moves = { c + new Vec2(220, -60), c + new Vec2(260, 80), c + new Vec2(120, 160) };
+        Vec2[] depots = { c + new Vec2(-40, -150), c + new Vec2(40, -150), c + new Vec2(-200, 40) };
+        if (f >= 98 && f < 205) s.Keys.Add(Key.LeftShift);
+        for (int i = 0; i < 3; i++)
+        {
+            int move = 100 + i * 10;
+            if (f >= move && f < move + 8) { s.Mouse = moves[i]; if (f < move + 2) s.MouseDown[(int)MouseButton.Right] = true; }
+            int place = 160 + i * 14;
+            if (f >= place && f < place + 12) { s.Mouse = depots[i]; if (f < place + 2) s.MouseDown[(int)MouseButton.Left] = true; }
+        }
+        if (f is 150 or 151) s.Keys.Add(Key.D);
+        if (f is 210 or 211) s.Keys.Add(Key.Escape);
     }
 }

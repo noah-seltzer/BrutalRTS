@@ -17,6 +17,7 @@ internal sealed class EntityExtra
     public int BuildTx, BuildTy;
     public int BuildSiteId = -1;
     public bool BuildPaid;
+    public readonly List<QueuedOrder> Queue = new(); // shift-queued orders after the current one
     public float ScanTimer;
     public bool TrainStarted;
     public int TileX, TileY;       // structures: top-left footprint tile

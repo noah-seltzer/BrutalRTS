@@ -22,9 +22,7 @@ public sealed partial class World
     private void ResetOrder(Entity e)
     {
         var x = e.X;
-        if (e.Order == UnitOrder.Build && x.BuildSiteId < 0 && x.BuildPaid)
-            Players[e.Owner].Credits += Defs.Get(x.BuildKind).Cost;
-        x.BuildPaid = false;
+        RefundUnplacedBuild(e);
         x.BuildSiteId = -1;
         e.Order = UnitOrder.Idle;
         e.TargetId = null;
@@ -33,19 +31,13 @@ public sealed partial class World
         ClearPath(e);
     }
 
-    private void CmdMoveImpl(IEnumerable<int> ids, Vec2 target, bool attackMove)
+    private void CmdMoveImpl(IEnumerable<int> ids, Vec2 target, bool attackMove, bool queue = false)
     {
         var list = OwnedUnits(ids).ToList();
         if (list.Count == 0) return;
         var slots = FormationSlots(list, target);
-        for (int i = 0; i < list.Count; i++)
-        {
-            var e = list[i];
-            ResetOrder(e);
-            e.Order = attackMove ? UnitOrder.AttackMove : UnitOrder.Move;
-            e.OrderTarget = slots[i];
-            SetPath(e, slots[i]);
-        }
+        var order = attackMove ? UnitOrder.AttackMove : UnitOrder.Move;
+        for (int i = 0; i < list.Count; i++) Issue(list[i], new QueuedOrder(order, slots[i]), queue);
     }
 
     /// <summary>Spread a group around a target point; assigns each unit a slot (greedy by distance).</summary>
@@ -93,20 +85,18 @@ public sealed partial class World
         return result;
     }
 
-    private void CmdAttackImpl(IEnumerable<int> ids, int targetId)
+    private void CmdAttackImpl(IEnumerable<int> ids, int targetId, bool queue = false)
     {
         var t = FindEntity(targetId);
         if (t == null || !t.Alive || t.Owner < 0) return;
         foreach (var e in OwnedUnits(ids))
         {
             if (t.Owner == e.Owner || e.Def.Range <= 0) continue;
-            ResetOrder(e);
-            e.Order = UnitOrder.Attack;
-            e.TargetId = t.Id;
+            Issue(e, new QueuedOrder(UnitOrder.Attack, TargetId: t.Id), queue);
         }
     }
 
-    private void CmdHarvestImpl(IEnumerable<int> ids, int fieldId)
+    private void CmdHarvestImpl(IEnumerable<int> ids, int fieldId, bool queue = false)
     {
         var f = FindEntity(fieldId);
         if (f == null || !f.Alive || f.Kind != EntityKind.CrystalField) return;
@@ -114,22 +104,19 @@ public sealed partial class World
         foreach (var e in OwnedUnits(ids))
         {
             if (e.Kind != EntityKind.Worker) { nonWorkers.Add(e.Id); continue; }
-            ResetOrder(e);
-            e.Order = UnitOrder.Harvest;
-            e.TargetId = f.Id;
-            e.X.LastField = f.Id;
+            Issue(e, new QueuedOrder(UnitOrder.Harvest, TargetId: f.Id), queue);
         }
-        if (nonWorkers.Count > 0) CmdMoveImpl(nonWorkers, f.Pos, false);
+        if (nonWorkers.Count > 0) CmdMoveImpl(nonWorkers, f.Pos, false, queue);
     }
 
-    private void CmdStopImpl(IEnumerable<int> ids) { foreach (var e in OwnedUnits(ids)) ResetOrder(e); }
+    private void CmdStopImpl(IEnumerable<int> ids) { foreach (var e in OwnedUnits(ids)) { ClearQueue(e); ResetOrder(e); } }
 
     private void CmdHoldImpl(IEnumerable<int> ids)
     {
-        foreach (var e in OwnedUnits(ids)) { ResetOrder(e); e.Order = UnitOrder.Hold; e.OrderTarget = e.Pos; }
+        foreach (var e in OwnedUnits(ids)) { ClearQueue(e); ResetOrder(e); e.Order = UnitOrder.Hold; e.OrderTarget = e.Pos; }
     }
 
-    private void CmdSmartImpl(IEnumerable<int> ids, Vec2 target, int? targetEntityId)
+    private void CmdSmartImpl(IEnumerable<int> ids, Vec2 target, int? targetEntityId, bool queue = false)
     {
         var list = OwnedUnits(ids).ToList();
         if (list.Count == 0) return;
@@ -140,14 +127,14 @@ public sealed partial class World
             if (t.Owner >= 0 && t.Owner != owner)
             {
                 var attackers = list.Where(u => u.Def.Range > 0).Select(u => u.Id).ToList();
-                CmdAttackImpl(attackers, t.Id);
+                CmdAttackImpl(attackers, t.Id, queue);
                 var rest = list.Where(u => u.Def.Range <= 0).Select(u => u.Id).ToList();
-                if (rest.Count > 0) CmdMoveImpl(rest, target, false);
+                if (rest.Count > 0) CmdMoveImpl(rest, target, false, queue);
                 return;
             }
             if (t.Kind == EntityKind.CrystalField)
             {
-                CmdHarvestImpl(list.Select(u => u.Id), t.Id);
+                CmdHarvestImpl(list.Select(u => u.Id), t.Id, queue);
                 return;
             }
             if (t.Owner == owner && t.Def.IsStructure)
@@ -157,27 +144,16 @@ public sealed partial class World
                 foreach (var w in workers)
                 {
                     if (t.UnderConstruction)
-                    {
-                        ResetOrder(w);
-                        w.Order = UnitOrder.Build;
-                        w.X.BuildKind = t.Kind; w.X.BuildTx = t.X.TileX; w.X.BuildTy = t.X.TileY;
-                        w.X.BuildSiteId = t.Id;
-                        w.OrderTarget = t.Pos;
-                    }
+                        Issue(w, new QueuedOrder(UnitOrder.Build, t.Pos, t.Id, t.Kind, t.X.TileX, t.X.TileY), queue);
                     else if (t.Kind == EntityKind.HQ && w.Cargo > 0)
-                    {
-                        int lf = w.X.LastField;
-                        ResetOrder(w);
-                        w.X.LastField = lf;
-                        w.Order = UnitOrder.ReturnCargo;
-                    }
+                        Issue(w, new QueuedOrder(UnitOrder.ReturnCargo, TargetId: t.Id), queue);
                     else others.Add(w.Id);
                 }
-                if (others.Count > 0) CmdMoveImpl(others, target, false);
+                if (others.Count > 0) CmdMoveImpl(others, target, false, queue);
                 return;
             }
         }
-        CmdMoveImpl(list.Select(u => u.Id), target, false);
+        CmdMoveImpl(list.Select(u => u.Id), target, false, queue);
     }
 
     // ---------------- per-unit update ----------------
@@ -187,6 +163,7 @@ public sealed partial class World
         if (e.AttackCooldownLeft > 0) e.AttackCooldownLeft -= dt;
         x.RepathTimer -= dt;
         x.ScanTimer -= dt;
+        if (e.Order == UnitOrder.Idle && x.Queue.Count > 0) StartNextQueued(e);
 
         switch (e.Order)
         {
@@ -346,9 +323,8 @@ public sealed partial class World
     {
         Emit(GameEvent.Explosion, t.Owner, t.Pos);
         if (!t.Def.IsStructure && t.Owner is 0 or 1) Emit(GameEvent.UnitLost, t.Owner, t.Pos);
-        if (t.Order == UnitOrder.Build && t.X.BuildSiteId < 0 && t.X.BuildPaid && t.Owner is 0 or 1)
-            Players[t.Owner].Credits += Defs.Get(t.X.BuildKind).Cost;
-        t.X.BuildPaid = false;
+        RefundUnplacedBuild(t);
+        ClearQueue(t);
         ClearPath(t);
     }
 
@@ -440,7 +416,7 @@ public sealed partial class World
         var x = e.X;
         if (e.Cargo <= 0) { e.Order = UnitOrder.Harvest; e.TargetId = x.LastField >= 0 ? x.LastField : null; ClearPath(e); x.RepathTimer = 0; return; }
         var hq = NearestDropoff(e.Owner, e.Pos);
-        if (hq == null) { ClearPath(e); return; } // wait with cargo
+        if (hq == null) { if (x.Queue.Count > 0) ResetOrder(e); else ClearPath(e); return; } // wait with cargo
         if (SurfDist(e.Pos, hq) - e.Def.Radius <= InteractDist - 8f || (SurfDist(e.Pos, hq) <= InteractDist && !HasPath(e)))
         {
             int amount = e.Cargo;
@@ -448,6 +424,7 @@ public sealed partial class World
             Players[e.Owner].Credits += amount;
             e.Cargo = 0;
             ClearPath(e);
+            if (x.Queue.Count > 0) { ResetOrder(e); return; } // a harvest trip ends here when orders are queued
             e.Order = UnitOrder.Harvest;
             var lf = x.LastField >= 0 ? FindEntity(x.LastField) : null;
             e.TargetId = lf != null && lf.Alive ? lf.Id : NearestField(e.Pos, 25 * TileSize)?.Id;
@@ -520,25 +497,33 @@ public sealed partial class World
         return true;
     }
 
-    private bool OverlapsPendingSite(int owner, EntityKind k, int tx, int ty, int margin = 0)
+    /// <summary>ignoreQueueOf: a worker whose queued placements don't count (a non-Shift build clears them).</summary>
+    private bool OverlapsPendingSite(int owner, EntityKind k, int tx, int ty, int margin = 0, Entity? ignoreQueueOf = null)
     {
         int s = Defs.Get(k).FootprintTiles;
+        bool Overlaps(EntityKind otherKind, int ox, int oy)
+        {
+            int otherSize = Defs.Get(otherKind).FootprintTiles;
+            return tx - margin < ox + otherSize && ox < tx + s + margin && ty - margin < oy + otherSize && oy < ty + s + margin;
+        }
         foreach (var u in _entities)
         {
-            if (u.Owner != owner || u.Order != UnitOrder.Build || u.X.BuildSiteId >= 0 || !u.Alive) continue;
-            int os = Defs.Get(u.X.BuildKind).FootprintTiles;
-            if (tx - margin < u.X.BuildTx + os && u.X.BuildTx < tx + s + margin && ty - margin < u.X.BuildTy + os && u.X.BuildTy < ty + s + margin) return true;
+            if (u.Owner != owner || !u.Alive) continue;
+            if (u.Order == UnitOrder.Build && u.X.BuildSiteId < 0 && Overlaps(u.X.BuildKind, u.X.BuildTx, u.X.BuildTy)) return true;
+            if (u == ignoreQueueOf) continue;
+            foreach (var q in u.X.Queue)
+                if (IsPlacement(q) && Overlaps(q.BuildKind, q.BuildTx, q.BuildTy)) return true;
         }
         return false;
     }
 
-    private bool CanPlaceImpl(int owner, EntityKind structure, int tileX, int tileY)
+    private bool CanPlaceImpl(int owner, EntityKind structure, int tileX, int tileY, Entity? ignoreQueueOf = null)
     {
         var d = Defs.Get(structure);
         if (!d.IsStructure || structure == EntityKind.CrystalField || owner is not (0 or 1)) return false;
         if (!FootprintClear(structure, tileX, tileY)) return false;
         if (!MeetsRequirement(owner, structure)) return false;
-        if (OverlapsPendingSite(owner, structure, tileX, tileY)) return false;
+        if (OverlapsPendingSite(owner, structure, tileX, tileY, ignoreQueueOf: ignoreQueueOf)) return false;
         if (owner == 0 || !_ais.Any(a => a.Me == owner))
         {
             int s = d.FootprintTiles;
@@ -553,21 +538,16 @@ public sealed partial class World
         return true;
     }
 
-    private bool CmdBuildImpl(int workerId, EntityKind structure, int tileX, int tileY)
+    private bool CmdBuildImpl(int workerId, EntityKind structure, int tileX, int tileY, bool queue = false)
     {
         var w = FindEntity(workerId);
         if (w == null || !w.Alive || w.Owner is not (0 or 1) || !w.Def.Builds.Contains(structure)) return false;
-        if (!CanPlaceImpl(w.Owner, structure, tileX, tileY)) return false;
+        if (!CanPlaceImpl(w.Owner, structure, tileX, tileY, ignoreQueueOf: queue ? null : w)) return false;
         var p = Players[w.Owner];
         int cost = Defs.Get(structure).Cost;
         if (p.Credits < cost) { Emit(GameEvent.InsufficientCredits, w.Owner, w.Pos); return false; }
-        ResetOrder(w);
-        p.Credits -= cost;
-        w.Order = UnitOrder.Build;
-        w.X.BuildKind = structure; w.X.BuildTx = tileX; w.X.BuildTy = tileY;
-        w.X.BuildSiteId = -1; w.X.BuildPaid = true;
-        w.OrderTarget = FootprintCenter(structure, tileX, tileY);
-        w.X.RepathTimer = 0;
+        p.Credits -= cost; // queued builds are paid up front; ClearQueue/ResetOrder refund unplaced ones
+        Issue(w, new QueuedOrder(UnitOrder.Build, FootprintCenter(structure, tileX, tileY), null, structure, tileX, tileY), queue);
         return true;
     }
 }

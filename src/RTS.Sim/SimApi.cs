@@ -122,14 +122,20 @@ public sealed partial class World
 
     // ---- Commands (all validate ownership; ignore invalid ones). queue=true appends (shift-queue optional) ----
     public void CmdMove(IEnumerable<int> ids, Vec2 target, bool attackMove = false) => CmdMoveImpl(ids, target, attackMove);
+    public void CmdMove(IEnumerable<int> ids, Vec2 target, bool attackMove, bool queue) => CmdMoveImpl(ids, target, attackMove, queue);
     public void CmdAttack(IEnumerable<int> ids, int targetId) => CmdAttackImpl(ids, targetId);
+    public void CmdAttack(IEnumerable<int> ids, int targetId, bool queue) => CmdAttackImpl(ids, targetId, queue);
     public void CmdHarvest(IEnumerable<int> ids, int fieldId) => CmdHarvestImpl(ids, fieldId);
+    public void CmdHarvest(IEnumerable<int> ids, int fieldId, bool queue) => CmdHarvestImpl(ids, fieldId, queue);
     public void CmdStop(IEnumerable<int> ids) => CmdStopImpl(ids);
     public void CmdHold(IEnumerable<int> ids) => CmdHoldImpl(ids);
     /// <summary>Smart right-click: enemy -> attack, crystal (workers) -> harvest, own unfinished structure (workers) -> help build, else move.</summary>
     public void CmdSmart(IEnumerable<int> ids, Vec2 target, int? targetEntityId) => CmdSmartImpl(ids, target, targetEntityId);
+    public void CmdSmart(IEnumerable<int> ids, Vec2 target, int? targetEntityId, bool queue) => CmdSmartImpl(ids, target, targetEntityId, queue);
     /// <summary>Returns false (and emits InsufficientCredits etc.) if it can't be placed / afforded.</summary>
     public bool CmdBuild(int workerId, EntityKind structure, int tileX, int tileY) => CmdBuildImpl(workerId, structure, tileX, tileY);
+    /// <summary>queue=true appends the build to the worker's queue; it is still paid (and validated) now.</summary>
+    public bool CmdBuild(int workerId, EntityKind structure, int tileX, int tileY, bool queue) => CmdBuildImpl(workerId, structure, tileX, tileY, queue);
     public bool CanPlace(int owner, EntityKind structure, int tileX, int tileY) => CanPlaceImpl(owner, structure, tileX, tileY);
     public bool CmdTrain(int structureId, EntityKind unit) => CmdTrainImpl(structureId, unit);
     public void CmdCancelTrain(int structureId) => CmdCancelTrainImpl(structureId);
