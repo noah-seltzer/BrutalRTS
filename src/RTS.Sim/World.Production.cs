@@ -29,7 +29,7 @@ public sealed partial class World
                 s.Facing = (t.Pos - s.Pos).Normalized;
                 Emit(GameEvent.Shot, s.Owner, s.Pos);
                 Shots.Add(new ShotFx(s.Pos, t.Pos, s.Owner, s.Kind));
-                DealDamage(t, DamageOf(s), s);
+                DealDamage(t, HitDamage(s, t), s);
             }
         }
         // production

@@ -256,11 +256,11 @@ public sealed class SoftwareRenderer : IRenderer2D
         {
             if (ch == '\n') { cx = ox; cy += BitmapFont.LineH * s; continue; }
             int code = ch;
-            if (code < BitmapFont.First || code > BitmapFont.Last) code = '?';
+            if ((code < BitmapFont.First || code > BitmapFont.Last) && code != BitmapFont.MiddleDotChar) code = '?';
             if (cx >= _w) { cx += BitmapFont.CellW * s; continue; }
             if (code != ' ' && cx + BitmapFont.GlyphW * s > 0 && cy < _h && cy + BitmapFont.CellH * s > 0)
             {
-                var g = glyphs.Slice((code - BitmapFont.First) * BitmapFont.GlyphW, BitmapFont.GlyphW);
+                var g = code == BitmapFont.MiddleDotChar ? BitmapFont.MiddleDot : glyphs.Slice((code - BitmapFont.First) * BitmapFont.GlyphW, BitmapFont.GlyphW);
                 for (int row = 0; row < BitmapFont.CellH; row++)
                 {
                     // Merge consecutive set columns into one span per row.

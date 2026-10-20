@@ -20,6 +20,10 @@ public enum Terrain : byte { Grass, Water, Rock }
 
 public enum UnitOrder { Idle, Move, AttackMove, Attack, Harvest, ReturnCargo, Build, Hold }
 
+/// <summary>Tags that bonus damage can target. An entity may carry several.</summary>
+[Flags]
+public enum EntityAttribute { None = 0, Light = 1, Armored = 2, Structure = 4 }
+
 public sealed class EntityDef
 {
     public EntityKind Kind;
@@ -40,6 +44,9 @@ public sealed class EntityDef
     public EntityKind[] Trains = Array.Empty<EntityKind>(); // structures: units it can produce
     public EntityKind[] Builds = Array.Empty<EntityKind>(); // workers: structures it can build
     public EntityKind? Requires; // tech requirement (structure kind that must exist)
+    public EntityAttribute Attributes;
+    public int Armor;            // flat reduction applied to every hit taken
+    public IReadOnlyDictionary<EntityAttribute, int> BonusDamage = new Dictionary<EntityAttribute, int>(); // per-hit extra vs targets with that attribute
 }
 
 public sealed class Entity
