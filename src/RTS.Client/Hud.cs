@@ -171,7 +171,7 @@ public static class Hud
         Ui.TextFit(r, x, y, string.Join("  ", parts), Pal.TextDim, 14, maxW);
         for (int i = 0; i < Math.Min(3, e.Rank); i++) Shapes.Chevron(r, new Vec2(icon.X + 8 + i * 10, icon.Bottom + 10), 4, Pal.Gold);
         if (parts.Count > 0) y += 22;
-        var combat = StatText.Defense(e.Def) + (e.Def.Damage > 0 ? "   " + StatText.Attack(e.Def) : "");
+        var combat = StatText.AttributesAndArmor(e.Def) + (e.Def.Damage > 0 ? $"   {StatText.Attack(e.Def)}, Rng {e.Def.Range / World.TileSize:0.#}" : "");
         Ui.TextFit(r, x, y, combat, Pal.TextDim, 14, maxW);
         y += 22;
 

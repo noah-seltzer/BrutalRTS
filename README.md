@@ -63,10 +63,11 @@ dotnet run --project tools/RTS.Snapshot --no-build -- --app client --script menu
 dotnet run --project tools/RTS.Snapshot --no-build -- --app client --script start --frames 300 --out snapshots
 dotnet run --project tools/RTS.Snapshot --no-build -- --app client --script demo  --frames 300 --out snapshots
 dotnet run --project tools/RTS.Snapshot --no-build -- --app client --script queue --frames 300 --out snapshots
+dotnet run --project tools/RTS.Snapshot --no-build -- --app client --script stats --frames 130 --out snapshots
 dotnet run --project tools/RTS.Snapshot --no-build -- --app demo --frames 60 --out snapshots   # renderer self-test
 ```
 
-Options: `--frames N`, `--out DIR`, `--script menu|start|demo|queue`, `--app client|demo`,
+Options: `--frames N`, `--out DIR`, `--script menu|start|demo|queue|stats`, `--app client|demo`,
 `--every K` (default N/5; the last frame is always written), `--at 10,50,90`,
 `--width W --height H` (default 1280x720), `--prefix P`.
 
@@ -77,6 +78,8 @@ Scripts:
   pan with Right (130-165) and Up (170-200) arrows, scroll-zoom in (220, 230) and out (245).
 - `queue` - `start`, box-select one worker, then with Shift held: three right-click moves (frames 100-130)
   and three depot placements (D, 150-200), Esc at 210; shows the queued waypoint chain and build ghosts.
+- `stats` - `start`, box-select one worker, then hover the Turret build button (from frame 100); shows armor,
+  attributes and bonus damage in the info panel and command-card tooltip.
 
 ## BRUTAL license obligations
 

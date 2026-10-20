@@ -122,6 +122,7 @@ public class CombatTests
         var target = new Entity { Kind = EntityKind.Soldier, Def = World.DefOf(EntityKind.Soldier) };
         for (int i = 0; i < 3; i++)
         {
+            if (i == 2) veteran.Hp = 100; // a rank-up heal would push this up
             var victim = w.SpawnUnit(EntityKind.Worker, 1, World.TileCenter(46, 46));
             w.CmdAttack(new[] { veteran.Id }, victim.Id);
             for (int s = 0; s < 10 * 30 && victim.Alive; s++) w.Step(1f / 30f);
@@ -132,6 +133,6 @@ public class CombatTests
         Assert.Equal(World.MaxHpOf(rookie), World.MaxHpOf(veteran));
         Assert.Equal(veteran.Def.MaxHp, World.MaxHpOf(veteran));
         Assert.Equal(World.HitDamage(rookie, target), World.HitDamage(veteran, target));
-        Assert.True(veteran.Hp <= veteran.Def.MaxHp);
+        Assert.True(veteran.Hp <= 100, $"rank-up healed to {veteran.Hp}");
     }
 }
