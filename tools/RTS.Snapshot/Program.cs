@@ -14,7 +14,7 @@ public static class Program
     private const string Usage = """
         RTS.Snapshot - headless frame capture
           --app client|demo     IGameApp to drive (default: client if built with it, else demo)
-          --script NAME         menu | start | demo | queue   (default: menu)
+          --script NAME         menu | start | demo | queue | stats   (default: menu)
           --frames N            frames to simulate at dt=1/60 (default: 300)
           --out DIR             output directory (default: ./snapshots)
           --every K             capture every K frames (default: N/5); last frame always captured
@@ -203,6 +203,7 @@ public static class Scripts
         ["start"] = Start,
         ["demo"] = Demo,
         ["queue"] = Queue,
+        ["stats"] = Stats,
     };
 
     public static IEnumerable<string> Names => All.Keys;
@@ -258,13 +259,8 @@ public static class Scripts
     /// </summary>
     private static void Queue(int f, int w, int h, ScriptFrame s)
     {
-        Start(f, w, h, s);
+        SelectWorker(f, w, h, s);
         var c = new Vec2(w / 2f, h / 2f);
-        var boxA = c + new Vec2(-165, -108);
-        var boxB = c + new Vec2(-125, -70);
-        if (f >= 50 && f < 60) s.Mouse = boxA;
-        else if (f >= 60 && f <= 80) { s.Mouse = boxA + (boxB - boxA) * ((f - 60) / 20f); s.MouseDown[(int)MouseButton.Left] = true; }
-        else if (f > 80) s.Mouse = c;
 
         Vec2[] moves = { c + new Vec2(220, -60), c + new Vec2(260, 80), c + new Vec2(120, 160) };
         Vec2[] depots = { c + new Vec2(-40, -150), c + new Vec2(40, -150), c + new Vec2(-200, 40) };
@@ -278,5 +274,27 @@ public static class Scripts
         }
         if (f is 150 or 151) s.Keys.Add(Key.D);
         if (f is 210 or 211) s.Keys.Add(Key.Escape);
+    }
+
+    /// <summary>start, then box-select one worker (default 1280x720 layout) by f80; mouse rests at screen center.</summary>
+    private static void SelectWorker(int f, int w, int h, ScriptFrame s)
+    {
+        Start(f, w, h, s);
+        var c = new Vec2(w / 2f, h / 2f);
+        var boxA = c + new Vec2(-165, -108);
+        var boxB = c + new Vec2(-125, -70);
+        if (f >= 50 && f < 60) s.Mouse = boxA;
+        else if (f >= 60 && f <= 80) { s.Mouse = boxA + (boxB - boxA) * ((f - 60) / 20f); s.MouseDown[(int)MouseButton.Left] = true; }
+        else if (f > 80) s.Mouse = c;
+    }
+
+    /// <summary>
+    /// Select one worker (info panel shows its combat stats), then from f100 hover the Turret build button
+    /// (bottom-left of the command card at 1280x720) so its tooltip shows armor and bonus damage.
+    /// </summary>
+    private static void Stats(int f, int w, int h, ScriptFrame s)
+    {
+        SelectWorker(f, w, h, s);
+        if (f >= 100) s.Mouse = new Vec2(w - 230, h - 40);
     }
 }

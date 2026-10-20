@@ -72,9 +72,8 @@ public sealed partial class GameSession
         var parts = new List<string> { $"Cost: {def.Cost}", $"Time: {def.BuildTime:0}s" };
         if (def.PopCost > 0) parts.Add($"Supply: {def.PopCost}");
         if (def.PopProvided > 0) parts.Add($"+{def.PopProvided} supply");
-        if (def.Damage > 0) parts.Add($"Dmg {def.Damage}, Rng {def.Range / TS:0.#}");
-        parts.Add($"HP {def.MaxHp}");
-        b.Detail = string.Join("  ", parts);
+        b.Detail = string.Join("  ", parts) + $"\nHP {def.MaxHp}  {StatText.AttributesAndArmor(def)}";
+        if (def.Damage > 0) b.Detail += $"\n{StatText.Attack(def)}, Rng {def.Range / TS:0.#}";
         return b;
     }
 

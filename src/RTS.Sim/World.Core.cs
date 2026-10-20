@@ -59,10 +59,12 @@ public sealed partial class World
     /// <summary>Top-left tile of a structure's footprint.</summary>
     public static (int tx, int ty) StructureOrigin(Entity e) => (e.X.TileX, e.X.TileY);
 
-    /// <summary>Max HP including veterancy bonus (+10% per rank).</summary>
-    public static int MaxHpOf(Entity e) => (int)MathF.Round(e.Def.MaxHp * (1f + 0.10f * e.Rank));
-    /// <summary>Damage per hit including veterancy bonus (+15% per rank).</summary>
-    public static int DamageOf(Entity e) => (int)MathF.Round(e.Def.Damage * (1f + 0.15f * e.Rank));
+    /// <summary>Max HP (veterancy is cosmetic, so this is the base value).</summary>
+    public static int MaxHpOf(Entity e) => e.Def.MaxHp;
+    /// <summary>Base damage per hit, before bonus damage and armor (veterancy is cosmetic).</summary>
+    public static int DamageOf(Entity e) => e.Def.Damage;
+    /// <summary>Damage one hit from attacker deals to target: max(1, base + bonus vs target's attributes - target armor).</summary>
+    public static int HitDamage(Entity attacker, Entity target) => HitDamageImpl(attacker, target);
     /// <summary>True if the owner has a COMPLETED structure of this kind.</summary>
     public bool HasCompleted(int owner, EntityKind k)
     {

@@ -277,7 +277,7 @@ public sealed partial class World
                 Emit(GameEvent.Shot, e.Owner, e.Pos);
                 Shots.Add(new ShotFx(e.Pos, t.Pos, e.Owner, e.Kind));
             }
-            DealDamage(t, DamageOf(e), e);
+            DealDamage(t, HitDamage(e, t), e);
         }
         return true;
     }
@@ -301,12 +301,7 @@ public sealed partial class World
             {
                 src.Kills++;
                 int rank = src.Kills >= 12 ? 3 : src.Kills >= 7 ? 2 : src.Kills >= 3 ? 1 : 0;
-                if (rank > src.Rank)
-                {
-                    int oldMax = MaxHpOf(src);
-                    src.Rank = rank;
-                    src.Hp += MaxHpOf(src) - oldMax;
-                }
+                if (rank > src.Rank) src.Rank = rank; // cosmetic: no stat change, no heal
             }
             return;
         }

@@ -222,8 +222,6 @@ public class SimTests
         Assert.All(victims, v => Assert.False(v.Alive));
         Assert.Equal(3, tank.Kills);
         Assert.Equal(1, tank.Rank);
-        Assert.True(World.MaxHpOf(tank) > tank.Def.MaxHp);
-        Assert.True(World.DamageOf(tank) > tank.Def.Damage);
     }
 
     [Fact]

@@ -8,6 +8,9 @@ public static class BitmapFont
 {
     public const int GlyphW = 5, GlyphH = 7, CellW = 6, CellH = 8, LineH = 9;
     public const int First = 32, Last = 126;
+    /// <summary>U+00B7, the only non-ASCII glyph (used as a HUD separator).</summary>
+    public const char MiddleDotChar = '·';
+    public static ReadOnlySpan<byte> MiddleDot => [0x00, 0x0C, 0x0C, 0x00, 0x00];
 
     public static ReadOnlySpan<byte> Glyphs =>
     [

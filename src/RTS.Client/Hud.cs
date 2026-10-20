@@ -168,9 +168,11 @@ public static class Hud
             if (e.Def.Builds.Length > 0) parts.Add($"Cargo {e.Cargo}");
             parts.Add(e.Order.ToString());
         }
-        if (e.Def.Damage > 0) parts.Add($"Dmg {e.Def.Damage}");
         Ui.TextFit(r, x, y, string.Join("  ", parts), Pal.TextDim, 14, maxW);
         for (int i = 0; i < Math.Min(3, e.Rank); i++) Shapes.Chevron(r, new Vec2(icon.X + 8 + i * 10, icon.Bottom + 10), 4, Pal.Gold);
+        if (parts.Count > 0) y += 22;
+        var combat = StatText.AttributesAndArmor(e.Def) + (e.Def.Damage > 0 ? $"   {StatText.Attack(e.Def)}, Rng {e.Def.Range / World.TileSize:0.#}" : "");
+        Ui.TextFit(r, x, y, combat, Pal.TextDim, 14, maxW);
         y += 22;
 
         if (!e.Def.IsStructure && e.Owner == GameSession.Me && s.World.QueueOf(e).Count > 0)
